@@ -28,6 +28,8 @@ var (
 	kafkaTpRetnTimeMs      string // Kafka topic retention time in ms
 	kafkaTopicPrefix       string
 	kafkaSkipTopicCreation string
+	kafkaTLS               bool
+	kafkaCA                string
 	natsSrv                string
 	splitAF                string
 	dump                   string
@@ -51,6 +53,8 @@ func init() {
 	flag.StringVar(&kafkaTpRetnTimeMs, "kafka-topic-retention-time-ms", defaultKafkaTpRetnTimeMs, "Kafka topic retention time in ms, default is 900000 ms i.e 15 minutes")
 	flag.StringVar(&kafkaTopicPrefix, "kafka-topic-prefix", "", "Optional prefix prepended to all Kafka topic names (e.g. 'prod' -> 'prod.gobmp.parsed.peer')")
 	flag.StringVar(&kafkaSkipTopicCreation, "kafka-skip-topic-creation", "false", "When \"true\", skip Kafka Admin API topic creation on startup. Use with Kafka 4.0+ environments that reject CreateTopics, or clusters where the client lacks CreateTopics permission; pre-create topics before starting gobmp.")
+	flag.BoolVar(&kafkaTLS, "kafka-tls", false, "Use TLS when connecting to the Kafka broker. Required by brokers exposing a TLS-only listener (commonly :9094).")
+	flag.StringVar(&kafkaCA, "kafka-ca", "", "Path to a PEM CA bundle used to verify the Kafka broker certificate. Empty uses the system trust store. Only used with -kafka-tls.")
 	flag.StringVar(&natsSrv, "nats-server", "", "URL to access NATS server")
 	flag.StringVar(&splitAF, "split-af", "true", "When set \"true\" ipv4 and ipv6 will be published in separate topics. if set \"false\" the same topic will be used for both address families.")
 	flag.IntVar(&perfPort, "performance-port", 0, "port used for performance debugging")
@@ -136,6 +140,8 @@ func main() {
 			TopicRetentionTimeMs: strconv.Itoa(cfg.KafkaConfig.KafkaTpRetnTimeMs),
 			TopicPrefix:          cfg.KafkaConfig.KafkaTopicPrefix,
 			SkipTopicCreation:    cfg.KafkaConfig.SkipTopicCreation,
+			TLS:                  cfg.KafkaConfig.KafkaTLS,
+			CAFile:               cfg.KafkaConfig.KafkaCA,
 		}
 		cfg.Publisher, err = kafka.NewKafkaPublisher(kConfig)
 		if err != nil {
@@ -283,6 +289,16 @@ func applyConfigOverrides(cfg *config.Config, fs *flag.FlagSet) error {
 			} else {
 				cfg.KafkaConfig.SkipTopicCreation = v
 			}
+		case "kafka-tls":
+			if cfg.KafkaConfig == nil {
+				cfg.KafkaConfig = defaultKafkaConfig()
+			}
+			cfg.KafkaConfig.KafkaTLS = kafkaTLS
+		case "kafka-ca":
+			if cfg.KafkaConfig == nil {
+				cfg.KafkaConfig = defaultKafkaConfig()
+			}
+			cfg.KafkaConfig.KafkaCA = kafkaCA
 		case "bmp-raw":
 			if cfg.KafkaConfig == nil {
 				cfg.KafkaConfig = defaultKafkaConfig()
