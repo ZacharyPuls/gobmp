@@ -279,3 +279,72 @@ func TestValidateSpeakersList(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_KafkaTLS(t *testing.T) {
+	yml := `
+kafka_config:
+  kafka_srv: "kafka.example:9094"
+  kafka_tls: true
+  kafka_ca: "/etc/pki/tls/certs/example-ca.pem"
+bmp_listen_port: 5000
+`
+	cfg, err := LoadConfig(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadConfig() unexpected error: %v", err)
+	}
+	if cfg.KafkaConfig == nil {
+		t.Fatal("KafkaConfig is nil, want non-nil")
+	}
+	if !cfg.KafkaConfig.KafkaTLS {
+		t.Error("KafkaTLS = false, want true")
+	}
+	if got, want := cfg.KafkaConfig.KafkaCA, "/etc/pki/tls/certs/example-ca.pem"; got != want {
+		t.Errorf("KafkaCA = %q, want %q", got, want)
+	}
+}
+
+// TestLoadConfig_KafkaTLSWithoutCA covers relying on the host trust store: TLS
+// on, no CA file named.
+func TestLoadConfig_KafkaTLSWithoutCA(t *testing.T) {
+	yml := `
+kafka_config:
+  kafka_srv: "kafka.example:9094"
+  kafka_tls: true
+`
+	cfg, err := LoadConfig(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadConfig() unexpected error: %v", err)
+	}
+	if cfg.KafkaConfig == nil {
+		t.Fatal("KafkaConfig is nil, want non-nil")
+	}
+	if !cfg.KafkaConfig.KafkaTLS {
+		t.Error("KafkaTLS = false, want true")
+	}
+	if cfg.KafkaConfig.KafkaCA != "" {
+		t.Errorf("KafkaCA = %q, want empty (system trust store)", cfg.KafkaConfig.KafkaCA)
+	}
+}
+
+// TestLoadConfig_KafkaTLSOmitted pins backward compatibility: a config written
+// before these keys existed must still load, with TLS off.
+func TestLoadConfig_KafkaTLSOmitted(t *testing.T) {
+	yml := `
+kafka_config:
+  kafka_srv: "kafka.example:9092"
+  kafka_topic_prefix: "prod"
+`
+	cfg, err := LoadConfig(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadConfig() unexpected error: %v", err)
+	}
+	if cfg.KafkaConfig == nil {
+		t.Fatal("KafkaConfig is nil, want non-nil")
+	}
+	if cfg.KafkaConfig.KafkaTLS {
+		t.Error("KafkaTLS = true for a config that omits the key, want false")
+	}
+	if cfg.KafkaConfig.KafkaCA != "" {
+		t.Errorf("KafkaCA = %q, want empty", cfg.KafkaConfig.KafkaCA)
+	}
+}

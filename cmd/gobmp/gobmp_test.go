@@ -258,6 +258,8 @@ func newTestFlagSet() *flag.FlagSet {
 	fs.StringVar(&kafkaTpRetnTimeMs, "kafka-topic-retention-time-ms", defaultKafkaTpRetnTimeMs, "")
 	fs.StringVar(&kafkaTopicPrefix, "kafka-topic-prefix", "", "")
 	fs.StringVar(&kafkaSkipTopicCreation, "kafka-skip-topic-creation", "false", "")
+	fs.BoolVar(&kafkaTLS, "kafka-tls", false, "")
+	fs.StringVar(&kafkaCA, "kafka-ca", "", "")
 	fs.StringVar(&natsSrv, "nats-server", "", "")
 	fs.StringVar(&splitAF, "split-af", "", "")
 	fs.StringVar(&dump, "dump", "", "")
@@ -688,5 +690,97 @@ func TestApplyConfigOverrides_KafkaSkipTopicCreation_Invalid(t *testing.T) {
 	cfg := &config.Config{}
 	if err := applyConfigOverrides(cfg, fs); err == nil {
 		t.Error("expected error for invalid --kafka-skip-topic-creation value, got nil")
+	}
+}
+
+func TestApplyConfigOverrides_KafkaTLS(t *testing.T) {
+	fs := newTestFlagSet()
+	for k, v := range map[string]string{
+		"kafka-server": "kafka.example:9094",
+		"kafka-tls":    "true",
+		"kafka-ca":     "/etc/pki/tls/certs/example-ca.pem",
+	} {
+		if err := fs.Set(k, v); err != nil {
+			t.Fatalf("failed to set flag %s: %v", k, err)
+		}
+	}
+
+	cfg := &config.Config{}
+	if err := applyConfigOverrides(cfg, fs); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.KafkaConfig == nil {
+		t.Fatal("KafkaConfig is nil, want non-nil")
+	}
+	if !cfg.KafkaConfig.KafkaTLS {
+		t.Error("KafkaTLS = false, want true")
+	}
+	if got, want := cfg.KafkaConfig.KafkaCA, "/etc/pki/tls/certs/example-ca.pem"; got != want {
+		t.Errorf("KafkaCA = %q, want %q", got, want)
+	}
+}
+
+// TestApplyConfigOverrides_KafkaTLSWithoutCA covers the common deployment where
+// the broker certificate chains to a CA already in the host trust store, so no
+// CA file is supplied.
+func TestApplyConfigOverrides_KafkaTLSWithoutCA(t *testing.T) {
+	fs := newTestFlagSet()
+	if err := fs.Set("kafka-tls", "true"); err != nil {
+		t.Fatalf("failed to set flag: %v", err)
+	}
+
+	cfg := &config.Config{}
+	if err := applyConfigOverrides(cfg, fs); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.KafkaConfig == nil {
+		t.Fatal("KafkaConfig is nil, want non-nil")
+	}
+	if !cfg.KafkaConfig.KafkaTLS {
+		t.Error("KafkaTLS = false, want true")
+	}
+	if cfg.KafkaConfig.KafkaCA != "" {
+		t.Errorf("KafkaCA = %q, want empty (system trust store)", cfg.KafkaConfig.KafkaCA)
+	}
+}
+
+// TestApplyConfigOverrides_KafkaTLSUnsetKeepsDefaultOff pins the compatibility
+// property: an invocation that does not mention the flags must leave TLS off, so
+// existing plaintext deployments are unaffected by this feature.
+func TestApplyConfigOverrides_KafkaTLSUnsetKeepsDefaultOff(t *testing.T) {
+	fs := newTestFlagSet()
+	if err := fs.Set("kafka-server", "kafka.example:9092"); err != nil {
+		t.Fatalf("failed to set flag: %v", err)
+	}
+
+	cfg := &config.Config{}
+	if err := applyConfigOverrides(cfg, fs); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.KafkaConfig == nil {
+		t.Fatal("KafkaConfig is nil, want non-nil")
+	}
+	if cfg.KafkaConfig.KafkaTLS {
+		t.Error("KafkaTLS = true with no flag set, want false")
+	}
+}
+
+// TestApplyConfigOverrides_KafkaTLSFlagOverridesFileValue proves precedence: a
+// config file may enable TLS and an explicit --kafka-tls=false on the command
+// line has to win, otherwise an operator cannot turn it off without editing the
+// file.
+func TestApplyConfigOverrides_KafkaTLSFlagOverridesFileValue(t *testing.T) {
+	fs := newTestFlagSet()
+	if err := fs.Set("kafka-tls", "false"); err != nil {
+		t.Fatalf("failed to set flag: %v", err)
+	}
+
+	cfg := &config.Config{KafkaConfig: &config.KafkaConfig{KafkaSrv: "kafka.example:9094", KafkaTLS: true}}
+	if err := applyConfigOverrides(cfg, fs); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.KafkaConfig.KafkaTLS {
+		t.Error("KafkaTLS = true, want false: an explicit --kafka-tls=false must override the file")
 	}
 }
