@@ -157,6 +157,22 @@ kubectl get pods -l app=gobmp
   --split-af=true
 ```
 
+### Kafka Publishing over TLS
+Brokers that terminate TLS on a dedicated listener (commonly `:9094`) refuse
+plaintext connections, so `--kafka-tls` is required to reach them:
+```bash
+./bin/gobmp --source-port=5000 \
+  --kafka-server=kafka.example.com:9094 \
+  --kafka-tls \
+  --kafka-ca=/etc/pki/tls/certs/example-root-ca.pem \
+  --split-af=true
+```
+`--kafka-ca` is optional. Omit it when the broker certificate chains to a CA
+already in the host trust store:
+```bash
+./bin/gobmp --source-port=5000 --kafka-server=kafka.example.com:9094 --kafka-tls
+```
+
 ### NATS Publishing
 ```bash
 ./bin/gobmp --source-port=5000 \
@@ -203,6 +219,16 @@ kafka_config:
   admin_id: "collector-01"
 ```
 
+**Kafka over TLS (`config.yaml`):**
+```yaml
+bmp_listen_port: 5000
+kafka_config:
+  kafka_srv: "kafka.example.com:9094"
+  kafka_tls: true
+  # Optional. Omit to verify against the host trust store.
+  kafka_ca: "/etc/pki/tls/certs/example-root-ca.pem"
+```
+
 **NATS example:**
 ```yaml
 bmp_listen_port: 5000
@@ -227,6 +253,8 @@ kafka_config:
   kafka_srv: "host:port"     # required to activate Kafka publisher
   kafka_tp_retn_time_ms: 900000
   kafka_topic_prefix: ""     # optional topic name prefix
+  kafka_tls: false           # true = connect to the broker over TLS
+  kafka_ca: ""               # PEM CA bundle; empty = host trust store
   bmp_raw: false             # OpenBMP RAW mode
   admin_id: ""               # defaults to OS hostname
 
@@ -320,6 +348,33 @@ Full path and filename for storing processed messages when `--dump=file` is used
 **Default:** none (Kafka disabled)
 
 Kafka broker address for publishing BMP messages. When specified, goBMP publishes parsed messages to topic-specific Kafka topics. Example: `--kafka-server=kafka.example.com:9092`
+
+```
+--kafka-tls
+```
+**Default:** false (plaintext)
+
+Connect to the Kafka broker over TLS. Required for brokers that expose a
+TLS-only listener, conventionally `:9094`, since those refuse plaintext
+connections outright.
+
+This is one-way (server-authenticated) TLS: goBMP verifies the broker
+certificate and presents none of its own, which suits brokers that use network
+scope rather than client certificates for authorization. The negotiated
+protocol floor is TLS 1.2.
+
+```
+--kafka-ca={path}
+```
+**Default:** empty (host trust store)
+
+Path to a PEM bundle used to verify the broker certificate. Only consulted when
+`--kafka-tls` is set.
+
+Leave it empty when the broker certificate chains to a CA the host already
+trusts; supply it when the broker uses a private CA that is not installed as a
+system trust anchor. An unreadable file, or one containing no certificate, is
+rejected at startup before any connection is attempted.
 
 ```
 --kafka-topic-prefix={prefix}

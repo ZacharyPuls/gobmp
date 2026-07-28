@@ -59,6 +59,12 @@ type KafkaConfig struct {
 	// clusters where the client lacks CreateTopics permission. Pre-create the
 	// required topics before starting gobmp when this is set.
 	SkipTopicCreation bool `yaml:"skip_topic_creation"`
+	// KafkaTLS enables TLS on broker connections. Brokers exposing a TLS-only
+	// listener refuse plaintext, so this is required to reach them.
+	KafkaTLS bool `yaml:"kafka_tls"`
+	// KafkaCA is an optional PEM bundle used to verify the broker certificate.
+	// Empty means the host's system trust store. Only used when KafkaTLS is set.
+	KafkaCA string `yaml:"kafka_ca"`
 }
 
 type Config struct {

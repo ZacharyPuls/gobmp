@@ -186,6 +186,17 @@ func NewKafkaPublisher(kConfig *Config) (pub.Publisher, error) {
 	config.Net.ReadTimeout = netReadTimeout
 	config.Version = sarama.V3_0_0_0
 
+	if kConfig.TLS {
+		tlsConfig, err := newTLSConfig(kConfig.CAFile)
+		if err != nil {
+			glog.Errorf("failed to build TLS config with error: %+v", err)
+			return nil, err
+		}
+		config.Net.TLS.Enable = true
+		config.Net.TLS.Config = tlsConfig
+		glog.V(5).Infof("Kafka TLS enabled (ca: %q)", kConfig.CAFile)
+	}
+
 	kafkaSrvs := strings.Split(kConfig.ServerAddress, ",")
 	var (
 		ca                    sarama.ClusterAdmin
