@@ -62,7 +62,7 @@ func (p *producer) producePeerMessage(op int, msg bmp.Message) {
 		// first PeerUp the fields are immutable — no data race with readers
 		// that wait on speakerReady.
 		p.speakerReadyOnce.Do(func() {
-			p.speakerIP = m.LocalIP
+			p.speakerIP = msg.SpeakerIP
 			md5Sum := md5.Sum([]byte(p.speakerIP))
 			p.speakerHash = hex.EncodeToString(md5Sum[:])
 			close(p.speakerReady)
